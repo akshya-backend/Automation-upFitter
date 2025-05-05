@@ -23,5 +23,5 @@ Before you can run this project, you will need to have the following installed:
 #### 1. Clone the Repository
 
 ```bash
-https://github.com/akshya-backend/Automation-upfitter.git
+https://github.com/akshya-backend/automation-upfitter-scraper.git
 cd city-upfitter-scraping
