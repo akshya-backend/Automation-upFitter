@@ -1,5 +1,6 @@
 const axios = require('axios');
 require('dotenv').config();
+
 async function searchSerper(query, start = 0) {
   try {
     const config = {
@@ -21,4 +22,35 @@ async function searchSerper(query, start = 0) {
   }
 }
 
-module.exports = { searchSerper };
+async function scrapeWebsite(cluster, url) {
+  try {
+    return await cluster.execute({ url }, async ({ page, data }) => {
+      await page.setDefaultNavigationTimeout(30000);
+      await page.setRequestInterception(true);
+
+      page.on('request', req =>
+        ['image', 'stylesheet', 'font'].includes(req.resourceType())
+          ? req.abort()
+          : req.continue()
+      );
+
+      await page.goto(data.url, { waitUntil: 'domcontentloaded' });
+
+      await page.evaluate(() => {
+        document.querySelectorAll('script, style, iframe').forEach(el => el.remove());
+      });
+
+      const text = await page.evaluate(() =>
+        document.body.innerText.replace(/\s+/g, ' ').trim()
+      );
+
+      return text;
+    });
+  } catch (err) {
+    console.error(`[SCRAPER] Failed to scrape ${url}: ${err.message}`);
+    return null;
+  }
+}
+
+
+module.exports = { searchSerper,scrapeWebsite };

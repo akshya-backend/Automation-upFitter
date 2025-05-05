@@ -1,6 +1,7 @@
-const { google } = require("googleapis");
-const { GoogleAuth } = require("google-auth-library");
-require("dotenv").config();
+// services/google.sheet.service.js
+const { google } = require('googleapis');
+const { GoogleAuth } = require('google-auth-library');
+require('dotenv').config();
 
 const googleAuth = {
   type: "service_account",
@@ -16,62 +17,75 @@ const googleAuth = {
   universe_domain: "googleapis.com"
 };
 
-const writeToSheet = async (data, apiId) => {
-  try {
-    const auth = new GoogleAuth({
-      credentials: googleAuth,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
+const auth = new GoogleAuth({
+  credentials: googleAuth,
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
 
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: "v4", auth: client });
+async function initSheet(requestId) {
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: 'v4', auth: client });
 
-    const spreadsheetId = process.env.SPREADSHEET_ID;
+  const sheetTitle = `Upfitters-${requestId}`;
+  
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    requestBody: {
+      requests: [{
+        addSheet: {
+          properties: {
+            title: sheetTitle,
+            gridProperties: {
+              rowCount: 2,
+              columnCount: 8,
+              frozenRowCount: 1
+            }
+          }
+        }
+      }]
+    }
+  });
 
-    // Generate sheet name using the apiId and current timestamp to ensure uniqueness
-    const sheetName = `upfitter-${apiId}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${sheetTitle}!A1:H1`,
+    valueInputOption: 'USER_ENTERED',
+    resource: {
+      values: [[
+        'Company', 'Website', 'Phone', 'Email', 
+        'Address', 'owner','City', 'Description'
+      ]]
+    }
+  });
 
-    // Create the new sheet
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            addSheet: {
-              properties: {
-                title: sheetName,
-              },
-            },
-          },
-        ],
-      },
-    });
+  return sheetTitle;
+}
 
-    const headers = ["name", "companyUrl", "contactDetails", "description", "ownerName", "location", "city"];
-    const values = data.map((row) =>
-      headers.map((key) => {
-        const value = row[key];
-        return typeof value === "object" ? JSON.stringify(value) : value || "";
-      })
-    );
 
-    // Write data to the new sheet
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `'${sheetName}'!A1`,
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [headers, ...values],
-      },
-    });
+async function appendResults(results, requestId) {
+  const sheetTitle = `Upfitters-${requestId}`;
 
-    console.log(`✅ Data written to new sheet: ${sheetName}`);
-  } catch (error) {
-    console.error("❌ Failed to write to Google Sheet:", error.message);
-    throw error;
-  }
-};
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: 'v4', auth: client });
 
-module.exports = {
-  writeToSheet
-};
+  const values = results.map(r => [
+    r.name ?? 'N/A',
+    r.website ?? 'N/A',
+    r.phone ?? 'N/A',
+    r.email ?? 'N/A',
+    r.address ?? 'N/A',
+    r.owner?? 'N/A',
+    r.city ?? 'N/A',
+    r.description ?? 'N/A'
+  ]);
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${sheetTitle}!A:H`,
+    valueInputOption: 'USER_ENTERED',
+    resource: { values }
+  });
+}
+
+
+module.exports = { initSheet, appendResults };

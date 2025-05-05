@@ -1,30 +1,16 @@
-// upfitter.controller.js
 const { processCity } = require('../services/upfitter.processor.service.js');
-const { Cluster } = require('puppeteer-cluster');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const puppeteer = require('puppeteer-extra');
 const { v4: uuidv4 } = require('uuid');
-const { writeToSheet } = require('../services/google.sheet.service.js');
+const { initSheet, appendResults } = require('../services/google.sheet.service.js');
+const { initCluster } = require('../services/puppeteer-cluster.js');
 
-puppeteer.use(StealthPlugin());
-
-const CONFIG = {
-  clusterConcurrency: 20,
-  headless: true
-};
-
-async function initCluster() {
-  return await Cluster.launch({
-    concurrency: Cluster.CONCURRENCY_CONTEXT,
-    maxConcurrency: CONFIG.clusterConcurrency,
-    puppeteer,
-    puppeteerOptions: {
-      headless: CONFIG.headless,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    },
-    monitor: false
+// Throttle for OpenAI or expensive calls
+const delayThrottle = (fn, delay = 1000) => {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      fn().then(resolve).catch(reject);
+    }, delay);
   });
-}
+};
 
 async function getUpfittersByCities(req, res) {
   const { cities } = req.body;
@@ -37,41 +23,39 @@ async function getUpfittersByCities(req, res) {
     });
   }
 
-  console.log(`[${requestId}] Job started for ${cities.length} cities`);
-  const allResults = [];
-  const openAiLimit = (fn) => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      fn().then(resolve).catch(reject);
-    }, 1000); 
-  });
-};
+  console.log(`[${requestId}] Started processing ${cities.length} cities...`);
+
+  await initSheet(requestId);
   const cluster = await initCluster();
 
   try {
-    const chunkSize = 10;
+    const chunkSize = 5;
     for (let i = 0; i < cities.length; i += chunkSize) {
       const chunk = cities.slice(i, i + chunkSize);
-      const chunkResults = await Promise.all(chunk.map((city, idx) =>
-        processCity(cluster, city, i + idx, cities.length, openAiLimit)
-      ));
-      allResults.push(...chunkResults.flat());
+      console.log(`[${requestId}] Processing chunk ${i / chunkSize + 1}/${Math.ceil(cities.length / chunkSize)}`);
+
+      const chunkResults = await Promise.allSettled(
+        chunk.map((city, idx) =>
+          processCity(cluster, city, i + idx, cities.length, delayThrottle)
+        )
+      );
+
+      const successful = chunkResults
+        .filter(r => r.status === 'fulfilled')
+        .flatMap(r => r.value);
+
+      await appendResults(successful, requestId); // flush to sheet immediately
     }
 
-    await writeToSheet(allResults, requestId);
+    console.log(`[${requestId}] ✅ All cities processed.`);
     res.status(200).json({
       requestId,
       totalCities: cities.length,
-      resultsFound: allResults.length,
-      data: allResults
+      status: "Processing started and results are being written to sheet."
     });
-  } catch (error) {
-    console.error(`[${requestId}] Error: ${error.message}`);
-    res.status(500).json({
-      requestId,
-      error: "Processing failed",
-      message: error.message
-    });
+  } catch (err) {
+    console.error(`[${requestId}] ❌ Error: ${err.message}`);
+    res.status(500).json({ requestId, error: err.message });
   } finally {
     await cluster.close();
   }

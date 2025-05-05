@@ -1,5 +1,5 @@
 {
-  "name": "automation-node-projecft",
+  "name": "automation-node-project",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -7,14 +7,15 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "build": "npm install",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "postinstall": "npx puppeteer browsers install chrome",
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@faker-js/faker": "^9.7.0",
     "axios": "^1.8.4",
-    "cheerio": "^1.0.0",
     "chrome-aws-lambda": "^10.1.0",
     "csv-parser": "^3.2.0",
     "csv-writer": "^1.6.0",
@@ -27,6 +28,5 @@
     "puppeteer-cluster": "^0.24.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
-
   }
 }
